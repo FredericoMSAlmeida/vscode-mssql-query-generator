@@ -21,6 +21,11 @@ export const FluentResultGridCommand = {
     CopyAsInsertInto: "fluentResultGrid.copyAsInsertInto",
     CopyColumnName: "fluentResultGrid.copyColumnName",
 
+    GenerateSelect: "fluentResultGrid.generateSelect",
+    GenerateUpdate: "fluentResultGrid.generateUpdate",
+    GenerateDelete: "fluentResultGrid.generateDelete",
+    GenerateInsert: "fluentResultGrid.generateInsert",
+
     SaveAsCsv: "fluentResultGrid.saveAsCsv",
     SaveAsJson: "fluentResultGrid.saveAsJson",
     SaveAsExcel: "fluentResultGrid.saveAsExcel",

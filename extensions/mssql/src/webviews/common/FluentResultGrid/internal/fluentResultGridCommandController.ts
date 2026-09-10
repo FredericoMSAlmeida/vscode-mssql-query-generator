@@ -98,6 +98,24 @@ export interface FluentResultGridCommandController {
     ) => Promise<void>;
 }
 
+export function fluentResultGridCommandUsesActualCopySelection(commandId: string): boolean {
+    switch (commandId) {
+        case FluentResultGridCommand.CopySelection:
+        case FluentResultGridCommand.CopyWithHeaders:
+        case FluentResultGridCommand.CopyAsCsv:
+        case FluentResultGridCommand.CopyAsJson:
+        case FluentResultGridCommand.CopyAsInClause:
+        case FluentResultGridCommand.CopyAsInsertInto:
+        case FluentResultGridCommand.GenerateSelect:
+        case FluentResultGridCommand.GenerateUpdate:
+        case FluentResultGridCommand.GenerateDelete:
+        case FluentResultGridCommand.GenerateInsert:
+            return true;
+        default:
+            return false;
+    }
+}
+
 export function useFluentResultGridCommandController({
     applyFrozenColumnIndex,
     applyGridTransforms,
@@ -188,14 +206,10 @@ export function useFluentResultGridCommandController({
 
     const getSelectionForCommand = useCallback(
         (grid: SlickGrid, commandId: string): ISlickRange[] | undefined => {
+            if (fluentResultGridCommandUsesActualCopySelection(commandId)) {
+                return getActualSelectionForCopy(grid);
+            }
             switch (commandId) {
-                case FluentResultGridCommand.CopySelection:
-                case FluentResultGridCommand.CopyWithHeaders:
-                case FluentResultGridCommand.CopyAsCsv:
-                case FluentResultGridCommand.CopyAsJson:
-                case FluentResultGridCommand.CopyAsInClause:
-                case FluentResultGridCommand.CopyAsInsertInto:
-                    return getActualSelectionForCopy(grid);
                 case FluentResultGridCommand.SaveAsCsv:
                 case FluentResultGridCommand.SaveAsJson:
                 case FluentResultGridCommand.SaveAsExcel:
@@ -218,10 +232,13 @@ export function useFluentResultGridCommandController({
     const emitHostCommand = useCallback(
         async (grid: SlickGrid, event: FluentResultGridCommandEvent): Promise<void> => {
             const liveSelection = getSelectionForCommand(grid, event.commandId);
-            await onCommand?.({
-                ...event,
-                selection: liveSelection ?? event.selection,
-            });
+            await onCommand?.(
+                {
+                    ...event,
+                    selection: liveSelection ?? event.selection,
+                },
+                { getItem: (row: number) => grid.getDataItem(row) as Slick.SlickData },
+            );
         },
         [getSelectionForCommand, onCommand],
     );
