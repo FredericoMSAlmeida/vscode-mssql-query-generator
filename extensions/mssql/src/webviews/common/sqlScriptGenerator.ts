@@ -4,7 +4,6 @@
  *--------------------------------------------------------------------------------------------*/
 
 import type { DbCellValue, IDbColumn, ISlickRange } from "../../sharedInterfaces/queryResult";
-import type { IDisposableDataProvider } from "../pages/QueryResult/table/dataProvider";
 import { getEOL } from "./utils";
 
 export const NUMERIC_SQL_TYPES = new Set([
@@ -24,6 +23,17 @@ export const NUMERIC_SQL_TYPES = new Set([
 const SQL_NUMBER_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
 export const INSERT_ROW_LIMIT = 1000;
 
+export interface GeneratorColumn {
+    id?: string;
+    field?: string;
+    toolTip?: string;
+    name?: string;
+}
+
+export interface GeneratorDataProvider {
+    getItem(row: number): Slick.SlickData;
+}
+
 export function isNumericSqlType(dataTypeName: string | undefined): boolean {
     return !!dataTypeName && NUMERIC_SQL_TYPES.has(dataTypeName.toLowerCase());
 }
@@ -36,17 +46,15 @@ export function escapeSqlIdentifier(value: string): string {
     return `[${value.replaceAll("]", "]]")}]`;
 }
 
-export function getColumnInfo<T extends Slick.SlickData>(
+export function getColumnInfo(
     columnInfo: IDbColumn[],
-    col: Slick.Column<T> | undefined,
+    col: GeneratorColumn | undefined,
 ): IDbColumn | undefined {
     const colIndex = col?.field ? parseInt(col.field, 10) : NaN;
     return !isNaN(colIndex) ? columnInfo[colIndex] : undefined;
 }
 
-export function getAllDataColumnIndices<T extends Slick.SlickData>(
-    columns: Slick.Column<T>[],
-): number[] {
+export function getAllDataColumnIndices(columns: GeneratorColumn[]): number[] {
     const result: number[] = [];
     columns.forEach((col, i) => {
         if (col?.id !== "rowNumber" && col?.field) {
@@ -56,9 +64,9 @@ export function getAllDataColumnIndices<T extends Slick.SlickData>(
     return result;
 }
 
-export function getSelectedColumnIndices<T extends Slick.SlickData>(
+export function getSelectedColumnIndices(
     ranges: ISlickRange[],
-    columns: Slick.Column<T>[],
+    columns: GeneratorColumn[],
 ): number[] {
     const selected = new Set<number>();
     for (const range of ranges) {
@@ -86,10 +94,7 @@ export function isSingleRowSelection(ranges: ISlickRange[]): boolean {
     return ranges.length === 1 && ranges[0].fromRow === ranges[0].toRow;
 }
 
-export function isFullRowSelected<T extends Slick.SlickData>(
-    ranges: ISlickRange[],
-    columns: Slick.Column<T>[],
-): boolean {
+export function isFullRowSelected(ranges: ISlickRange[], columns: GeneratorColumn[]): boolean {
     const dataColIndices = getAllDataColumnIndices(columns);
     if (!isSingleRowSelection(ranges) || dataColIndices.length === 0) {
         return false;
@@ -100,39 +105,39 @@ export function isFullRowSelected<T extends Slick.SlickData>(
     return range.fromCell <= minIdx && range.toCell >= maxIdx;
 }
 
-export function isSingleColumnMultiRowSelection<T extends Slick.SlickData>(
+export function isSingleColumnMultiRowSelection(
     ranges: ISlickRange[],
-    columns: Slick.Column<T>[],
+    columns: GeneratorColumn[],
 ): boolean {
     return (
         getSelectedColumnIndices(ranges, columns).length === 1 && getSelectedRows(ranges).length > 1
     );
 }
 
-export interface ColumnValuePair<T extends Slick.SlickData> {
-    column: Slick.Column<T>;
+export interface ColumnValuePair {
+    column: GeneratorColumn;
     dbColumn: IDbColumn | undefined;
     cellValue: DbCellValue | undefined;
 }
 
-export function getColumnValuePair<T extends Slick.SlickData>(
+export function getColumnValuePair(
     colIndex: number,
     row: number,
-    columns: Slick.Column<T>[],
-    dataProvider: IDisposableDataProvider<T>,
+    columns: GeneratorColumn[],
+    dataProvider: GeneratorDataProvider,
     columnInfo: IDbColumn[],
-): ColumnValuePair<T> {
+): ColumnValuePair {
     const column = columns[colIndex];
     const item = dataProvider.getItem(row) as Slick.SlickData;
     const cellValue = column?.field ? (item?.[column.field] as DbCellValue | undefined) : undefined;
     return { column, dbColumn: getColumnInfo(columnInfo, column), cellValue };
 }
 
-export function getColumnIdentifier<T extends Slick.SlickData>(pair: ColumnValuePair<T>): string {
+export function getColumnIdentifier(pair: ColumnValuePair): string {
     return pair.dbColumn?.baseColumnName || pair.column?.toolTip || pair.column?.name || "";
 }
 
-export function formatSqlValue<T extends Slick.SlickData>(pair: ColumnValuePair<T>): string {
+export function formatSqlValue(pair: ColumnValuePair): string {
     if (!pair.cellValue || pair.cellValue.isNull) {
         return "NULL";
     }
@@ -160,7 +165,7 @@ export function buildQualifiedTableName(
     return schemaName ? `${escapeSqlIdentifier(schemaName)}.${table}` : table;
 }
 
-export function buildWhereClause<T extends Slick.SlickData>(pairs: ColumnValuePair<T>[]): string {
+export function buildWhereClause(pairs: ColumnValuePair[]): string {
     return pairs
         .map((pair) => {
             const colName = escapeSqlIdentifier(getColumnIdentifier(pair));
@@ -172,13 +177,13 @@ export function buildWhereClause<T extends Slick.SlickData>(pairs: ColumnValuePa
         .join(" AND ");
 }
 
-function getRowPairs<T extends Slick.SlickData>(
+function getRowPairs(
     colIndices: number[],
     row: number,
-    columns: Slick.Column<T>[],
-    dataProvider: IDisposableDataProvider<T>,
+    columns: GeneratorColumn[],
+    dataProvider: GeneratorDataProvider,
     columnInfo: IDbColumn[],
-): ColumnValuePair<T>[] {
+): ColumnValuePair[] {
     return colIndices.map((i) => getColumnValuePair(i, row, columns, dataProvider, columnInfo));
 }
 
@@ -192,17 +197,17 @@ function getSelectedRows(ranges: ISlickRange[]): number[] {
     return [...rows].sort((a, b) => a - b);
 }
 
-function getColumnPairsForRows<T extends Slick.SlickData>(
+function getColumnPairsForRows(
     colIndex: number,
     rows: number[],
-    columns: Slick.Column<T>[],
-    dataProvider: IDisposableDataProvider<T>,
+    columns: GeneratorColumn[],
+    dataProvider: GeneratorDataProvider,
     columnInfo: IDbColumn[],
-): ColumnValuePair<T>[] {
+): ColumnValuePair[] {
     return rows.map((r) => getColumnValuePair(colIndex, r, columns, dataProvider, columnInfo));
 }
 
-function buildInClauseValues<T extends Slick.SlickData>(pairs: ColumnValuePair<T>[]): string[] {
+function buildInClauseValues(pairs: ColumnValuePair[]): string[] {
     const seen = new Set<string>();
     const values: string[] = [];
     for (const pair of pairs) {
@@ -218,9 +223,7 @@ function buildInClauseValues<T extends Slick.SlickData>(pairs: ColumnValuePair<T
     return values;
 }
 
-export function buildInClause<T extends Slick.SlickData>(
-    pairs: ColumnValuePair<T>[],
-): string | undefined {
+export function buildInClause(pairs: ColumnValuePair[]): string | undefined {
     if (pairs.length === 0) {
         return undefined;
     }
@@ -232,11 +235,11 @@ export function buildInClause<T extends Slick.SlickData>(
     return `${colName} IN (${values.join(", ")})`;
 }
 
-export function generateSelect<T extends Slick.SlickData>(
+export function generateSelect(
     row: number,
     selectedColumnIndices: number[],
-    columns: Slick.Column<T>[],
-    dataProvider: IDisposableDataProvider<T>,
+    columns: GeneratorColumn[],
+    dataProvider: GeneratorDataProvider,
     columnInfo: IDbColumn[],
     fallback?: FallbackTableName,
 ): string {
@@ -257,11 +260,11 @@ export function generateSelect<T extends Slick.SlickData>(
     return `SELECT ${colNames}${eol}FROM ${table}${eol}WHERE ${buildWhereClause(wherePairs)};`;
 }
 
-export function generateDelete<T extends Slick.SlickData>(
+export function generateDelete(
     row: number,
     selectedColumnIndices: number[],
-    columns: Slick.Column<T>[],
-    dataProvider: IDisposableDataProvider<T>,
+    columns: GeneratorColumn[],
+    dataProvider: GeneratorDataProvider,
     columnInfo: IDbColumn[],
     fallback?: FallbackTableName,
 ): string {
@@ -271,11 +274,11 @@ export function generateDelete<T extends Slick.SlickData>(
     return `DELETE FROM ${table}${eol}WHERE ${buildWhereClause(wherePairs)};`;
 }
 
-export function generateUpdate<T extends Slick.SlickData>(
+export function generateUpdate(
     row: number,
     selectedColumnIndices: number[],
-    columns: Slick.Column<T>[],
-    dataProvider: IDisposableDataProvider<T>,
+    columns: GeneratorColumn[],
+    dataProvider: GeneratorDataProvider,
     columnInfo: IDbColumn[],
     fallback?: FallbackTableName,
 ): string {
@@ -299,10 +302,10 @@ export function generateUpdate<T extends Slick.SlickData>(
     return `UPDATE ${table}${eol}SET ${setClause}${eol}WHERE ${buildWhereClause(wherePairs)};`;
 }
 
-export function generateInsertForRows<T extends Slick.SlickData>(
+export function generateInsertForRows(
     ranges: ISlickRange[],
-    columns: Slick.Column<T>[],
-    dataProvider: IDisposableDataProvider<T>,
+    columns: GeneratorColumn[],
+    dataProvider: GeneratorDataProvider,
     columnInfo: IDbColumn[],
     fallback?: FallbackTableName,
 ): string {
@@ -347,10 +350,10 @@ export function generateInsertForRows<T extends Slick.SlickData>(
     return statements.join(eol + eol);
 }
 
-export function generateSelectIn<T extends Slick.SlickData>(
+export function generateSelectIn(
     ranges: ISlickRange[],
-    columns: Slick.Column<T>[],
-    dataProvider: IDisposableDataProvider<T>,
+    columns: GeneratorColumn[],
+    dataProvider: GeneratorDataProvider,
     columnInfo: IDbColumn[],
     fallback?: FallbackTableName,
 ): string | undefined {
@@ -374,10 +377,10 @@ export function generateSelectIn<T extends Slick.SlickData>(
     return `SELECT ${colNames}${eol}FROM ${table}${eol}WHERE ${inClause};`;
 }
 
-export function generateDeleteIn<T extends Slick.SlickData>(
+export function generateDeleteIn(
     ranges: ISlickRange[],
-    columns: Slick.Column<T>[],
-    dataProvider: IDisposableDataProvider<T>,
+    columns: GeneratorColumn[],
+    dataProvider: GeneratorDataProvider,
     columnInfo: IDbColumn[],
     fallback?: FallbackTableName,
 ): string | undefined {
@@ -393,10 +396,10 @@ export function generateDeleteIn<T extends Slick.SlickData>(
     return `DELETE FROM ${table}${eol}WHERE ${inClause};`;
 }
 
-export function generateUpdateIn<T extends Slick.SlickData>(
+export function generateUpdateIn(
     ranges: ISlickRange[],
-    columns: Slick.Column<T>[],
-    dataProvider: IDisposableDataProvider<T>,
+    columns: GeneratorColumn[],
+    dataProvider: GeneratorDataProvider,
     columnInfo: IDbColumn[],
     fallback?: FallbackTableName,
 ): string | undefined {

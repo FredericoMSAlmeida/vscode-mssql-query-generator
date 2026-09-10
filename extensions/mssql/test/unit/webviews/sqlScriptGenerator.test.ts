@@ -5,7 +5,6 @@
 
 import { expect } from "chai";
 import type { IDbColumn } from "vscode-mssql";
-import type { IDisposableDataProvider } from "../../../src/webviews/pages/QueryResult/table/dataProvider";
 import {
     buildInClause,
     buildQualifiedTableName,
@@ -20,6 +19,8 @@ import {
     isFullRowSelected,
     isSingleColumnMultiRowSelection,
     isSingleRowSelection,
+    type GeneratorColumn,
+    type GeneratorDataProvider,
 } from "../../../src/webviews/common/sqlScriptGenerator";
 
 function restoreProperty(name: string, descriptor: PropertyDescriptor | undefined): void {
@@ -34,13 +35,13 @@ function makeRange(fromRow: number, toRow: number, fromCell: number, toCell: num
     return { fromRow, toRow, fromCell, toCell };
 }
 
-function makeCol(index: number, name: string, toolTip?: string): Slick.Column<Slick.SlickData> {
+function makeCol(index: number, name: string, toolTip?: string): GeneratorColumn {
     return {
         field: String(index),
         id: String(index),
         name,
         toolTip,
-    } as Slick.Column<Slick.SlickData>;
+    };
 }
 
 function makeDbCol(
@@ -58,10 +59,10 @@ function makeCell(displayValue: string, isNull = false) {
 
 type CellRow = Record<string, { displayValue: string; isNull: boolean }>;
 
-function makeProvider(rows: CellRow[]): IDisposableDataProvider<Slick.SlickData> {
+function makeProvider(rows: CellRow[]): GeneratorDataProvider {
     return {
         getItem: (row: number) => rows[row] ?? {},
-    } as unknown as IDisposableDataProvider<Slick.SlickData>;
+    };
 }
 
 suite("sqlScriptGenerator", () => {
