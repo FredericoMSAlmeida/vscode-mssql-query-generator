@@ -100,6 +100,15 @@ export function isFullRowSelected<T extends Slick.SlickData>(
     return range.fromCell <= minIdx && range.toCell >= maxIdx;
 }
 
+export function isSingleColumnMultiRowSelection<T extends Slick.SlickData>(
+    ranges: ISlickRange[],
+    columns: Slick.Column<T>[],
+): boolean {
+    return (
+        getSelectedColumnIndices(ranges, columns).length === 1 && getSelectedRows(ranges).length > 1
+    );
+}
+
 export interface ColumnValuePair<T extends Slick.SlickData> {
     column: Slick.Column<T>;
     dbColumn: IDbColumn | undefined;
@@ -171,6 +180,56 @@ function getRowPairs<T extends Slick.SlickData>(
     columnInfo: IDbColumn[],
 ): ColumnValuePair<T>[] {
     return colIndices.map((i) => getColumnValuePair(i, row, columns, dataProvider, columnInfo));
+}
+
+function getSelectedRows(ranges: ISlickRange[]): number[] {
+    const rows = new Set<number>();
+    for (const range of ranges) {
+        for (let r = range.fromRow; r <= range.toRow; r++) {
+            rows.add(r);
+        }
+    }
+    return [...rows].sort((a, b) => a - b);
+}
+
+function getColumnPairsForRows<T extends Slick.SlickData>(
+    colIndex: number,
+    rows: number[],
+    columns: Slick.Column<T>[],
+    dataProvider: IDisposableDataProvider<T>,
+    columnInfo: IDbColumn[],
+): ColumnValuePair<T>[] {
+    return rows.map((r) => getColumnValuePair(colIndex, r, columns, dataProvider, columnInfo));
+}
+
+function buildInClauseValues<T extends Slick.SlickData>(pairs: ColumnValuePair<T>[]): string[] {
+    const seen = new Set<string>();
+    const values: string[] = [];
+    for (const pair of pairs) {
+        if (!pair.cellValue || pair.cellValue.isNull) {
+            continue;
+        }
+        const formatted = formatSqlValue(pair);
+        if (!seen.has(formatted)) {
+            seen.add(formatted);
+            values.push(formatted);
+        }
+    }
+    return values;
+}
+
+export function buildInClause<T extends Slick.SlickData>(
+    pairs: ColumnValuePair<T>[],
+): string | undefined {
+    if (pairs.length === 0) {
+        return undefined;
+    }
+    const values = buildInClauseValues(pairs);
+    if (values.length === 0) {
+        return undefined;
+    }
+    const colName = escapeSqlIdentifier(getColumnIdentifier(pairs[0]));
+    return `${colName} IN (${values.join(", ")})`;
 }
 
 export function generateSelect<T extends Slick.SlickData>(
@@ -286,4 +345,69 @@ export function generateInsertForRows<T extends Slick.SlickData>(
         statements.push([`INSERT INTO ${table} (${colNames})`, "VALUES", ...rowLines].join(eol));
     }
     return statements.join(eol + eol);
+}
+
+export function generateSelectIn<T extends Slick.SlickData>(
+    ranges: ISlickRange[],
+    columns: Slick.Column<T>[],
+    dataProvider: IDisposableDataProvider<T>,
+    columnInfo: IDbColumn[],
+    fallback?: FallbackTableName,
+): string | undefined {
+    const eol = getEOL();
+    const colIndex = getSelectedColumnIndices(ranges, columns)[0];
+    const rows = getSelectedRows(ranges);
+    const pairs = getColumnPairsForRows(colIndex, rows, columns, dataProvider, columnInfo);
+    const inClause = buildInClause(pairs);
+    if (!inClause) {
+        return undefined;
+    }
+    const allPairs = getRowPairs(
+        getAllDataColumnIndices(columns),
+        rows[0],
+        columns,
+        dataProvider,
+        columnInfo,
+    );
+    const colNames = allPairs.map((p) => escapeSqlIdentifier(getColumnIdentifier(p))).join(", ");
+    const table = buildQualifiedTableName(pairs[0]?.dbColumn ?? allPairs[0]?.dbColumn, fallback);
+    return `SELECT ${colNames}${eol}FROM ${table}${eol}WHERE ${inClause};`;
+}
+
+export function generateDeleteIn<T extends Slick.SlickData>(
+    ranges: ISlickRange[],
+    columns: Slick.Column<T>[],
+    dataProvider: IDisposableDataProvider<T>,
+    columnInfo: IDbColumn[],
+    fallback?: FallbackTableName,
+): string | undefined {
+    const eol = getEOL();
+    const colIndex = getSelectedColumnIndices(ranges, columns)[0];
+    const rows = getSelectedRows(ranges);
+    const pairs = getColumnPairsForRows(colIndex, rows, columns, dataProvider, columnInfo);
+    const inClause = buildInClause(pairs);
+    if (!inClause) {
+        return undefined;
+    }
+    const table = buildQualifiedTableName(pairs[0]?.dbColumn, fallback);
+    return `DELETE FROM ${table}${eol}WHERE ${inClause};`;
+}
+
+export function generateUpdateIn<T extends Slick.SlickData>(
+    ranges: ISlickRange[],
+    columns: Slick.Column<T>[],
+    dataProvider: IDisposableDataProvider<T>,
+    columnInfo: IDbColumn[],
+    fallback?: FallbackTableName,
+): string | undefined {
+    const eol = getEOL();
+    const colIndex = getSelectedColumnIndices(ranges, columns)[0];
+    const rows = getSelectedRows(ranges);
+    const pairs = getColumnPairsForRows(colIndex, rows, columns, dataProvider, columnInfo);
+    const inClause = buildInClause(pairs);
+    if (!inClause) {
+        return undefined;
+    }
+    const table = buildQualifiedTableName(pairs[0]?.dbColumn, fallback);
+    return `UPDATE ${table}${eol}SET /* TODO: specify columns and values to update */${eol}WHERE ${inClause};`;
 }

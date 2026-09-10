@@ -7,13 +7,18 @@ import { expect } from "chai";
 import type { IDbColumn } from "vscode-mssql";
 import type { IDisposableDataProvider } from "../../../src/webviews/pages/QueryResult/table/dataProvider";
 import {
+    buildInClause,
     buildQualifiedTableName,
     generateDelete,
+    generateDeleteIn,
     generateInsertForRows,
     generateSelect,
+    generateSelectIn,
     generateUpdate,
+    generateUpdateIn,
     getSelectedColumnIndices,
     isFullRowSelected,
+    isSingleColumnMultiRowSelection,
     isSingleRowSelection,
 } from "../../../src/webviews/common/sqlScriptGenerator";
 
@@ -103,6 +108,12 @@ suite("sqlScriptGenerator", () => {
                     schemaName: "wrong",
                 }),
             ).to.equal("[dbo].[RealTable]");
+        });
+    });
+
+    suite("buildInClause", () => {
+        test("returns undefined for an empty pair list", () => {
+            expect(buildInClause([])).to.equal(undefined);
         });
     });
 
@@ -245,6 +256,92 @@ suite("sqlScriptGenerator", () => {
                 fallback,
             );
             expect(result).to.include("INSERT INTO [dbo].[Customers]");
+        });
+    });
+
+    suite("isSingleColumnMultiRowSelection", () => {
+        const cols = [makeCol(0, "Id"), makeCol(1, "Name")];
+
+        test("true for two rows in the same single column", () => {
+            const ranges = [makeRange(0, 2, 0, 0)];
+            expect(isSingleColumnMultiRowSelection(ranges, cols)).to.equal(true);
+        });
+
+        test("true for two discontiguous single-cell ranges in the same column", () => {
+            const ranges = [makeRange(0, 0, 0, 0), makeRange(2, 2, 0, 0)];
+            expect(isSingleColumnMultiRowSelection(ranges, cols)).to.equal(true);
+        });
+
+        test("false when the selection spans more than one column", () => {
+            const ranges = [makeRange(0, 2, 0, 1)];
+            expect(isSingleColumnMultiRowSelection(ranges, cols)).to.equal(false);
+        });
+
+        test("false for a single-row, single-column selection", () => {
+            const ranges = [makeRange(0, 0, 0, 0)];
+            expect(isSingleColumnMultiRowSelection(ranges, cols)).to.equal(false);
+        });
+    });
+
+    suite("generateSelectIn / generateUpdateIn / generateDeleteIn", () => {
+        const columnInfo = [
+            makeDbCol("int", "Id", "Customers", "dbo"),
+            makeDbCol("nvarchar", "Name", "Customers", "dbo"),
+        ];
+        const cols = [makeCol(0, "Id"), makeCol(1, "Name")];
+        const rows: CellRow[] = [
+            { "0": makeCell("1"), "1": makeCell("Alice") },
+            { "0": makeCell("2"), "1": makeCell("Bob") },
+            { "0": makeCell("2"), "1": makeCell("Bob2") }, // duplicate Id value 2
+            { "0": makeCell("", true), "1": makeCell("NullRow") }, // NULL Id
+        ];
+
+        test("generateSelectIn builds a deduped, NULL-dropped IN clause over the selected column", () => {
+            const provider = makeProvider(rows);
+            const ranges = [makeRange(0, 3, 0, 0)];
+            const result = generateSelectIn(ranges, cols, provider, columnInfo);
+            expect(result).to.equal(
+                "SELECT [Id], [Name]\r\nFROM [dbo].[Customers]\r\nWHERE [Id] IN (1, 2);",
+            );
+        });
+
+        test("generateDeleteIn builds the same IN clause without selecting columns", () => {
+            const provider = makeProvider(rows);
+            const ranges = [makeRange(0, 3, 0, 0)];
+            const result = generateDeleteIn(ranges, cols, provider, columnInfo);
+            expect(result).to.equal("DELETE FROM [dbo].[Customers]\r\nWHERE [Id] IN (1, 2);");
+        });
+
+        test("generateUpdateIn emits a placeholder SET clause and the IN-based WHERE", () => {
+            const provider = makeProvider(rows);
+            const ranges = [makeRange(0, 3, 0, 0)];
+            const result = generateUpdateIn(ranges, cols, provider, columnInfo);
+            expect(result).to.equal(
+                "UPDATE [dbo].[Customers]\r\nSET /* TODO: specify columns and values to update */\r\nWHERE [Id] IN (1, 2);",
+            );
+        });
+
+        test("returns undefined when every selected value is NULL", () => {
+            const nullRows: CellRow[] = [
+                { "0": makeCell("", true), "1": makeCell("A") },
+                { "0": makeCell("", true), "1": makeCell("B") },
+            ];
+            const provider = makeProvider(nullRows);
+            const ranges = [makeRange(0, 1, 0, 0)];
+            expect(generateSelectIn(ranges, cols, provider, columnInfo)).to.equal(undefined);
+            expect(generateUpdateIn(ranges, cols, provider, columnInfo)).to.equal(undefined);
+            expect(generateDeleteIn(ranges, cols, provider, columnInfo)).to.equal(undefined);
+        });
+
+        test("generateDeleteIn uses the fallback table name when baseTableName is empty", () => {
+            const noTableColumnInfo = [makeDbCol("int"), makeDbCol("nvarchar")];
+            const provider = makeProvider(rows);
+            const ranges = [makeRange(0, 3, 0, 0)];
+            const result = generateDeleteIn(ranges, cols, provider, noTableColumnInfo, {
+                tableName: "Customers",
+                schemaName: "dbo",
+            });
+            expect(result).to.equal("DELETE FROM [dbo].[Customers]\r\nWHERE [Id] IN (1, 2);");
         });
     });
 });
