@@ -83,11 +83,14 @@ suite("ContextMenu (legacy grid) generate-* actions", () => {
         "1": { displayValue: "Alice", isNull: false },
     };
 
-    function makeGridAndContext(selectedRanges: unknown[]) {
+    function makeGridAndContext(
+        selectedRanges: unknown[],
+        rowsByIndex: Record<number, unknown> = { 0: row },
+    ) {
         const grid = {
             getSelectionModel: () => ({ getSelectedRanges: () => selectedRanges }),
             getColumns: () => cols,
-            getData: () => ({ getItem: (r: number) => (r === 0 ? row : {}) }),
+            getData: () => ({ getItem: (r: number) => rowsByIndex[r] ?? {} }),
         };
         const sendRequest = sandbox.stub().resolves({});
         const queryResultContext = {
@@ -150,9 +153,9 @@ suite("ContextMenu (legacy grid) generate-* actions", () => {
         );
     });
 
-    test("does nothing and warns when the selection spans more than one row", async () => {
+    test("does nothing and warns when the selection spans multiple rows and multiple columns", async () => {
         const { grid, queryResultContext, sendRequest } = makeGridAndContext([
-            makeRange(0, 1, 0, 0),
+            makeRange(0, 1, 0, 1),
         ]);
         const menu = new ContextMenu<Slick.SlickData>(
             "file:///test.sql",
@@ -163,6 +166,134 @@ suite("ContextMenu (legacy grid) generate-* actions", () => {
         await (
             menu as unknown as { handleMenuAction: (a: GridContextMenuAction) => Promise<void> }
         ).handleMenuAction(GridContextMenuAction.GenerateSelect);
+
+        expect(sendRequest.called).to.equal(false);
+        expect((queryResultContext.log.warn as sinon.SinonStub).calledOnce).to.equal(true);
+    });
+
+    test("GenerateSelect builds a WHERE...IN clause when multiple rows in one column are selected", async () => {
+        const { grid, queryResultContext, sendRequest } = makeGridAndContext(
+            [makeRange(0, 1, 0, 0)],
+            {
+                0: {
+                    "0": { displayValue: "1", isNull: false },
+                    "1": { displayValue: "Alice", isNull: false },
+                },
+                1: {
+                    "0": { displayValue: "2", isNull: false },
+                    "1": { displayValue: "Bob", isNull: false },
+                },
+            },
+        );
+        const menu = new ContextMenu<Slick.SlickData>(
+            "file:///test.sql",
+            { batchId: 0, id: 0, rowCount: 2, columnInfo } as ResultSetSummary,
+            queryResultContext,
+        );
+        menu.init(grid as unknown as Slick.Grid<Slick.SlickData>);
+        await (
+            menu as unknown as { handleMenuAction: (a: GridContextMenuAction) => Promise<void> }
+        ).handleMenuAction(GridContextMenuAction.GenerateSelect);
+
+        const openCall = sendRequest
+            .getCalls()
+            .find((c) => c.args[0] === OpenGeneratedQueryRequest.type);
+        expect(openCall).to.not.equal(undefined);
+        const [, params] = openCall!.args;
+        expect(params.sql).to.equal(
+            "SELECT [Id], [Name]\r\nFROM [dbo].[Customers]\r\nWHERE [Id] IN (1, 2);",
+        );
+    });
+
+    test("GenerateDelete builds a WHERE...IN clause for a multi-row single-column selection", async () => {
+        const { grid, queryResultContext, sendRequest } = makeGridAndContext(
+            [makeRange(0, 1, 0, 0)],
+            {
+                0: {
+                    "0": { displayValue: "1", isNull: false },
+                    "1": { displayValue: "Alice", isNull: false },
+                },
+                1: {
+                    "0": { displayValue: "2", isNull: false },
+                    "1": { displayValue: "Bob", isNull: false },
+                },
+            },
+        );
+        const menu = new ContextMenu<Slick.SlickData>(
+            "file:///test.sql",
+            { batchId: 0, id: 0, rowCount: 2, columnInfo } as ResultSetSummary,
+            queryResultContext,
+        );
+        menu.init(grid as unknown as Slick.Grid<Slick.SlickData>);
+        await (
+            menu as unknown as { handleMenuAction: (a: GridContextMenuAction) => Promise<void> }
+        ).handleMenuAction(GridContextMenuAction.GenerateDelete);
+
+        const openCall = sendRequest
+            .getCalls()
+            .find((c) => c.args[0] === OpenGeneratedQueryRequest.type);
+        expect(openCall).to.not.equal(undefined);
+        const [, params] = openCall!.args;
+        expect(params.sql).to.equal("DELETE FROM [dbo].[Customers]\r\nWHERE [Id] IN (1, 2);");
+    });
+
+    test("GenerateUpdate emits a placeholder SET clause with a WHERE...IN for a multi-row single-column selection", async () => {
+        const { grid, queryResultContext, sendRequest } = makeGridAndContext(
+            [makeRange(0, 1, 0, 0)],
+            {
+                0: {
+                    "0": { displayValue: "1", isNull: false },
+                    "1": { displayValue: "Alice", isNull: false },
+                },
+                1: {
+                    "0": { displayValue: "2", isNull: false },
+                    "1": { displayValue: "Bob", isNull: false },
+                },
+            },
+        );
+        const menu = new ContextMenu<Slick.SlickData>(
+            "file:///test.sql",
+            { batchId: 0, id: 0, rowCount: 2, columnInfo } as ResultSetSummary,
+            queryResultContext,
+        );
+        menu.init(grid as unknown as Slick.Grid<Slick.SlickData>);
+        await (
+            menu as unknown as { handleMenuAction: (a: GridContextMenuAction) => Promise<void> }
+        ).handleMenuAction(GridContextMenuAction.GenerateUpdate);
+
+        const openCall = sendRequest
+            .getCalls()
+            .find((c) => c.args[0] === OpenGeneratedQueryRequest.type);
+        expect(openCall).to.not.equal(undefined);
+        const [, params] = openCall!.args;
+        expect(params.sql).to.equal(
+            "UPDATE [dbo].[Customers]\r\nSET /* TODO: specify columns and values to update */\r\nWHERE [Id] IN (1, 2);",
+        );
+    });
+
+    test("GenerateInsert still warns and does nothing for a multi-row single-column selection", async () => {
+        const { grid, queryResultContext, sendRequest } = makeGridAndContext(
+            [makeRange(0, 1, 0, 0)],
+            {
+                0: {
+                    "0": { displayValue: "1", isNull: false },
+                    "1": { displayValue: "Alice", isNull: false },
+                },
+                1: {
+                    "0": { displayValue: "2", isNull: false },
+                    "1": { displayValue: "Bob", isNull: false },
+                },
+            },
+        );
+        const menu = new ContextMenu<Slick.SlickData>(
+            "file:///test.sql",
+            { batchId: 0, id: 0, rowCount: 2, columnInfo } as ResultSetSummary,
+            queryResultContext,
+        );
+        menu.init(grid as unknown as Slick.Grid<Slick.SlickData>);
+        await (
+            menu as unknown as { handleMenuAction: (a: GridContextMenuAction) => Promise<void> }
+        ).handleMenuAction(GridContextMenuAction.GenerateInsert);
 
         expect(sendRequest.called).to.equal(false);
         expect((queryResultContext.log.warn as sinon.SinonStub).calledOnce).to.equal(true);

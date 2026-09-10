@@ -26,11 +26,15 @@ import {
 } from "../utils";
 import {
     generateDelete,
+    generateDeleteIn,
     generateInsertForRows,
     generateSelect,
+    generateSelectIn,
     generateUpdate,
+    generateUpdateIn,
     getSelectedColumnIndices,
     isFullRowSelected,
+    isSingleColumnMultiRowSelection,
     isSingleRowSelection,
 } from "../../../../common/sqlScriptGenerator";
 
@@ -81,6 +85,7 @@ export class ContextMenu<T extends Slick.SlickData> {
         );
         const isSingleRow = isSingleRowSelection(dataSelection);
         const isFullRow = isSingleRow && isFullRowSelected(dataSelection, gridColumns);
+        const isMultiRowSingleColumn = isSingleColumnMultiRowSelection(dataSelection, gridColumns);
 
         // Ask outer React app to show menu at coordinates
         this.queryResultContext.showGridContextMenu(
@@ -90,7 +95,10 @@ export class ContextMenu<T extends Slick.SlickData> {
                 await this.handleMenuAction(action);
                 this.queryResultContext.hideGridContextMenu();
             },
-            { showRowActions: isSingleRow && !isFullRow, showInsertAction: isFullRow },
+            {
+                showRowActions: (isSingleRow && !isFullRow) || isMultiRowSingleColumn,
+                showInsertAction: isFullRow,
+            },
         );
     }
 
@@ -200,15 +208,20 @@ export class ContextMenu<T extends Slick.SlickData> {
                 const dataSelection = tryCombineSelections(
                     this.grid.getSelectionModel().getSelectedRanges(),
                 );
-                if (!isSingleRowSelection(dataSelection)) {
-                    log.warn("Generate query actions require a single-row selection");
-                    break;
-                }
-                const [range] = dataSelection;
                 const dataProvider = this.grid.getData() as IDisposableDataProvider<T>;
                 const columnInfo = this.resultSetSummary.columnInfo;
-                const row = range.fromRow;
-                const selectedColumnIndices = getSelectedColumnIndices([range], gridColumns);
+
+                const isSingleRow = isSingleRowSelection(dataSelection);
+                const isMultiRowSingleColumn =
+                    action !== GridContextMenuAction.GenerateInsert &&
+                    isSingleColumnMultiRowSelection(dataSelection, gridColumns);
+
+                if (!isSingleRow && !isMultiRowSingleColumn) {
+                    log.warn(
+                        "Generate query actions require a single-row or single-column selection",
+                    );
+                    break;
+                }
 
                 const resolved = await this.queryResultContext.extensionRpc.sendRequest(
                     ResolveTableNameRequest.type,
@@ -218,42 +231,78 @@ export class ContextMenu<T extends Slick.SlickData> {
                     ? { tableName: resolved.tableName, schemaName: resolved.schemaName }
                     : undefined;
 
-                let sql: string;
-                if (action === GridContextMenuAction.GenerateSelect) {
-                    sql = generateSelect(
-                        row,
-                        selectedColumnIndices,
+                let sql: string | undefined;
+                if (isSingleRow) {
+                    const [range] = dataSelection;
+                    const row = range.fromRow;
+                    const selectedColumnIndices = getSelectedColumnIndices([range], gridColumns);
+                    if (action === GridContextMenuAction.GenerateSelect) {
+                        sql = generateSelect(
+                            row,
+                            selectedColumnIndices,
+                            gridColumns,
+                            dataProvider,
+                            columnInfo,
+                            fallback,
+                        );
+                    } else if (action === GridContextMenuAction.GenerateUpdate) {
+                        sql = generateUpdate(
+                            row,
+                            selectedColumnIndices,
+                            gridColumns,
+                            dataProvider,
+                            columnInfo,
+                            fallback,
+                        );
+                    } else if (action === GridContextMenuAction.GenerateDelete) {
+                        sql = generateDelete(
+                            row,
+                            selectedColumnIndices,
+                            gridColumns,
+                            dataProvider,
+                            columnInfo,
+                            fallback,
+                        );
+                    } else {
+                        sql = generateInsertForRows(
+                            [range],
+                            gridColumns,
+                            dataProvider,
+                            columnInfo,
+                            fallback,
+                        );
+                    }
+                } else if (action === GridContextMenuAction.GenerateSelect) {
+                    sql = generateSelectIn(
+                        dataSelection,
                         gridColumns,
                         dataProvider,
                         columnInfo,
                         fallback,
                     );
                 } else if (action === GridContextMenuAction.GenerateUpdate) {
-                    sql = generateUpdate(
-                        row,
-                        selectedColumnIndices,
-                        gridColumns,
-                        dataProvider,
-                        columnInfo,
-                        fallback,
-                    );
-                } else if (action === GridContextMenuAction.GenerateDelete) {
-                    sql = generateDelete(
-                        row,
-                        selectedColumnIndices,
+                    sql = generateUpdateIn(
+                        dataSelection,
                         gridColumns,
                         dataProvider,
                         columnInfo,
                         fallback,
                     );
                 } else {
-                    sql = generateInsertForRows(
-                        [range],
+                    sql = generateDeleteIn(
+                        dataSelection,
                         gridColumns,
                         dataProvider,
                         columnInfo,
                         fallback,
                     );
+                }
+
+                if (!sql) {
+                    log.warn(
+                        "Generate query action produced no SQL (e.g. every selected value was NULL)",
+                    );
+                    break;
                 }
 
                 await this.queryResultContext.extensionRpc.sendRequest(
