@@ -27,8 +27,10 @@ import {
     restoreFluentResultGridColumnWidths,
     stabilizeFluentResultGridColumnInfo,
 } from "../../src/webviews/common/FluentResultGrid/internal/fluentResultGridState";
-import { isFluentResultGridHostCommand } from "../../src/webviews/common/FluentResultGrid/internal/fluentResultGridCommandUtils";
-import { fluentResultGridCommandUsesActualCopySelection } from "../../src/webviews/common/FluentResultGrid/internal/fluentResultGridCommandController";
+import {
+    fluentResultGridCommandUsesActualCopySelection,
+    isFluentResultGridHostCommand,
+} from "../../src/webviews/common/FluentResultGrid/internal/fluentResultGridCommandUtils";
 import { shouldRevealFluentResultGridActiveCell } from "../../src/webviews/common/FluentResultGrid/internal/fluentResultGridKeyboardController";
 import {
     getFluentResultGridKeyboardAction,

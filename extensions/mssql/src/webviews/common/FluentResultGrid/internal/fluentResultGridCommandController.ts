@@ -43,7 +43,10 @@ import type {
     ReactGridInstanceWithSharedService,
     SourceRow,
 } from "./fluentResultGridControllerTypes";
-import { isFluentResultGridHostCommand } from "./fluentResultGridCommandUtils";
+import {
+    fluentResultGridCommandUsesActualCopySelection,
+    isFluentResultGridHostCommand,
+} from "./fluentResultGridCommandUtils";
 import type { FluentResultGridDataRow } from "./fluentResultGridDataView";
 import { toFluentResultGridAnchorRect } from "./fluentResultGridDomUtils";
 import type { FluentResultGridFilterValue } from "./fluentResultGridOverlays";
@@ -96,24 +99,6 @@ export interface FluentResultGridCommandController {
         grid: SlickGrid,
         column: Column<FluentResultGridDataRow>,
     ) => Promise<void>;
-}
-
-export function fluentResultGridCommandUsesActualCopySelection(commandId: string): boolean {
-    switch (commandId) {
-        case FluentResultGridCommand.CopySelection:
-        case FluentResultGridCommand.CopyWithHeaders:
-        case FluentResultGridCommand.CopyAsCsv:
-        case FluentResultGridCommand.CopyAsJson:
-        case FluentResultGridCommand.CopyAsInClause:
-        case FluentResultGridCommand.CopyAsInsertInto:
-        case FluentResultGridCommand.GenerateSelect:
-        case FluentResultGridCommand.GenerateUpdate:
-        case FluentResultGridCommand.GenerateDelete:
-        case FluentResultGridCommand.GenerateInsert:
-            return true;
-        default:
-            return false;
-    }
 }
 
 export function useFluentResultGridCommandController({
@@ -856,16 +841,19 @@ export function useFluentResultGridCommandController({
                 return;
             }
 
-            void onCommand?.({
-                ...commandContext,
-                commandId: FluentResultGridCommand.OpenCell,
-                cell: {
-                    rowIndex: args.row,
-                    columnIndex: resultColumnIndex,
-                    value: cellValue,
-                    languageId,
+            void onCommand?.(
+                {
+                    ...commandContext,
+                    commandId: FluentResultGridCommand.OpenCell,
+                    cell: {
+                        rowIndex: args.row,
+                        columnIndex: resultColumnIndex,
+                        value: cellValue,
+                        languageId,
+                    },
                 },
-            });
+                { getItem: (dataRow: number) => grid.getDataItem(dataRow) as Slick.SlickData },
+            );
         },
         [commandContext, onCommand, resultSetSummary.columnInfo],
     );
