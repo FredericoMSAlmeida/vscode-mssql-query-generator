@@ -224,6 +224,7 @@ export function useFluentResultGridController({
             canToggleViewMode,
             canToggleMaximize,
             isMaximized,
+            dataColumnCount: resultSetSummary.columnInfo.length,
             selection:
                 reactGridRef.current?.slickGrid &&
                 getDisplayedFluentResultGridSelectionForCopy(
@@ -237,6 +238,7 @@ export function useFluentResultGridController({
             gridId,
             isMaximized,
             resultSetSummary.batchId,
+            resultSetSummary.columnInfo.length,
             resultSetSummary.id,
             viewMode,
         ],
