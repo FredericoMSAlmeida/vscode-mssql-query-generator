@@ -43,7 +43,10 @@ import type {
     ReactGridInstanceWithSharedService,
     SourceRow,
 } from "./fluentResultGridControllerTypes";
-import { isFluentResultGridHostCommand } from "./fluentResultGridCommandUtils";
+import {
+    fluentResultGridCommandUsesActualCopySelection,
+    isFluentResultGridHostCommand,
+} from "./fluentResultGridCommandUtils";
 import type { FluentResultGridDataRow } from "./fluentResultGridDataView";
 import { toFluentResultGridAnchorRect } from "./fluentResultGridDomUtils";
 import type { FluentResultGridFilterValue } from "./fluentResultGridOverlays";
@@ -188,14 +191,10 @@ export function useFluentResultGridCommandController({
 
     const getSelectionForCommand = useCallback(
         (grid: SlickGrid, commandId: string): ISlickRange[] | undefined => {
+            if (fluentResultGridCommandUsesActualCopySelection(commandId)) {
+                return getActualSelectionForCopy(grid);
+            }
             switch (commandId) {
-                case FluentResultGridCommand.CopySelection:
-                case FluentResultGridCommand.CopyWithHeaders:
-                case FluentResultGridCommand.CopyAsCsv:
-                case FluentResultGridCommand.CopyAsJson:
-                case FluentResultGridCommand.CopyAsInClause:
-                case FluentResultGridCommand.CopyAsInsertInto:
-                    return getActualSelectionForCopy(grid);
                 case FluentResultGridCommand.SaveAsCsv:
                 case FluentResultGridCommand.SaveAsJson:
                 case FluentResultGridCommand.SaveAsExcel:
@@ -218,10 +217,13 @@ export function useFluentResultGridCommandController({
     const emitHostCommand = useCallback(
         async (grid: SlickGrid, event: FluentResultGridCommandEvent): Promise<void> => {
             const liveSelection = getSelectionForCommand(grid, event.commandId);
-            await onCommand?.({
-                ...event,
-                selection: liveSelection ?? event.selection,
-            });
+            await onCommand?.(
+                {
+                    ...event,
+                    selection: liveSelection ?? event.selection,
+                },
+                { getItem: (row: number) => grid.getDataItem(row) as Slick.SlickData },
+            );
         },
         [getSelectionForCommand, onCommand],
     );
@@ -839,16 +841,19 @@ export function useFluentResultGridCommandController({
                 return;
             }
 
-            void onCommand?.({
-                ...commandContext,
-                commandId: FluentResultGridCommand.OpenCell,
-                cell: {
-                    rowIndex: args.row,
-                    columnIndex: resultColumnIndex,
-                    value: cellValue,
-                    languageId,
+            void onCommand?.(
+                {
+                    ...commandContext,
+                    commandId: FluentResultGridCommand.OpenCell,
+                    cell: {
+                        rowIndex: args.row,
+                        columnIndex: resultColumnIndex,
+                        value: cellValue,
+                        languageId,
+                    },
                 },
-            });
+                { getItem: (dataRow: number) => grid.getDataItem(dataRow) as Slick.SlickData },
+            );
         },
         [commandContext, onCommand, resultSetSummary.columnInfo],
     );

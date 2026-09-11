@@ -5,6 +5,24 @@
 
 import { FluentResultGridCommand } from "../types/fluentResultGridCommandIds";
 
+export function fluentResultGridCommandUsesActualCopySelection(commandId: string): boolean {
+    switch (commandId) {
+        case FluentResultGridCommand.CopySelection:
+        case FluentResultGridCommand.CopyWithHeaders:
+        case FluentResultGridCommand.CopyAsCsv:
+        case FluentResultGridCommand.CopyAsJson:
+        case FluentResultGridCommand.CopyAsInClause:
+        case FluentResultGridCommand.CopyAsInsertInto:
+        case FluentResultGridCommand.GenerateSelect:
+        case FluentResultGridCommand.GenerateUpdate:
+        case FluentResultGridCommand.GenerateDelete:
+        case FluentResultGridCommand.GenerateInsert:
+            return true;
+        default:
+            return false;
+    }
+}
+
 export function isFluentResultGridHostCommand(commandId: string): boolean {
     switch (commandId) {
         case FluentResultGridCommand.SelectAll:

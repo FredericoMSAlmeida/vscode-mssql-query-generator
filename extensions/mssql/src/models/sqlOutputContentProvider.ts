@@ -25,6 +25,7 @@ import { ApiStatus } from "../sharedInterfaces/webview";
 import { getErrorMessage } from "../utils/utils";
 import { getLogger } from "./logger";
 import * as Utils from "./utils";
+import { parseSingleTableFromClause } from "../queryResult/fromClauseTableParser";
 // Use CommonJS import here because lodash/throttle is CJS; default ESM-style import
 // can transpile to throttle_1.default and fail at runtime in unit tests.
 import throttle = require("lodash/throttle");
@@ -287,6 +288,29 @@ export class SqlOutputContentProvider {
         void this._queryResultsMap
             .get(uri)
             .queryRunner.copyResultsAsInsertInto(selection, batchId, resultId);
+    }
+
+    public async resolveTableNameRequestHandler(
+        uri: string,
+        batchId: number,
+    ): Promise<{ tableName?: string; schemaName?: string }> {
+        const queryRunner = this._queryResultsMap.get(uri)?.queryRunner;
+        if (!queryRunner) {
+            return {};
+        }
+        try {
+            const queryText = await queryRunner.getBatchQueryText(batchId);
+            if (!queryText) {
+                return {};
+            }
+            return parseSingleTableFromClause(queryText) ?? {};
+        } catch {
+            // Degrade to the same "nothing resolved" shape the caller already
+            // treats as the UnknownTable fallback, rather than letting a failure
+            // (e.g. the owner document was closed) propagate through the RPC and
+            // silently abort the whole Generate action in the webview.
+            return {};
+        }
     }
 
     public generateSelectionSummaryData(

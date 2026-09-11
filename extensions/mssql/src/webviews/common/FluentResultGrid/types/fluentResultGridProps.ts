@@ -45,7 +45,10 @@ export interface FluentResultGridBehaviorProps {
 }
 
 export interface FluentResultGridCallbackProps {
-    onCommand?: (event: FluentResultGridCommandEvent) => MaybePromise<void>;
+    onCommand?: (
+        event: FluentResultGridCommandEvent,
+        rowAccessor?: { getItem(row: number): Slick.SlickData },
+    ) => MaybePromise<void>;
     onStateChange?: (state: FluentResultGridState) => void;
     onSelectionChange?: (selection: readonly ISlickRange[]) => void;
     onSelectionSummaryChange?: (

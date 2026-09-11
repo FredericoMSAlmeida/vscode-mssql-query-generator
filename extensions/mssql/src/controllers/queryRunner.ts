@@ -1524,6 +1524,35 @@ export default class QueryRunner {
         return undefined;
     }
 
+    public async getBatchQueryText(batchId: number): Promise<string | undefined> {
+        const batchSummary = this.batchSets[batchId];
+        if (!batchSummary) {
+            return undefined;
+        }
+        // Prefer the snapshot of the text that was actually executed for this run,
+        // but only when there's a single batch — with multiple batches the snapshot
+        // is every batch concatenated, which isn't this batch's text. Re-reading the
+        // live document in the multi-batch case risks parsing text the user has since
+        // edited but not re-run, but that's still more accurate than the wrong batch.
+        const isSingleBatch = this.batchSets.filter((b) => !!b).length <= 1;
+        if (isSingleBatch) {
+            const executedQueryString = this.getQueryString(this._ownerUri);
+            if (executedQueryString !== undefined) {
+                return executedQueryString;
+            }
+        }
+        const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(this._ownerUri));
+        const selection = batchSummary.selection;
+        if (!selection) {
+            return doc.getText();
+        }
+        const range = new vscode.Range(
+            new vscode.Position(selection.startLine, selection.startColumn),
+            new vscode.Position(selection.endLine, selection.endColumn),
+        );
+        return doc.getText(range);
+    }
+
     public resetHasCompleted(): void {
         this._hasCompleted = false;
     }

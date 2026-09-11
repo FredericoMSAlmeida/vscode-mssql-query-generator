@@ -30,6 +30,11 @@ import { QueryResultCommandsContext } from "./queryResultStateProvider";
 import { useQueryResultSelector } from "./queryResultSelector";
 import type { ResultGridHandle, ResultGridProps } from "./resultGrid";
 import { getFluentResultGridInitialFrozenColumnIndex } from "../../common/FluentResultGrid/internal/fluentResultGridState";
+import {
+    dispatchFluentGenerateCommand,
+    isFluentGenerateInsertVisible,
+    isFluentGenerateRowActionsVisible,
+} from "./fluentGenerateQuery";
 
 const DEFAULT_FONT_SIZE = 12;
 const BASE_ROW_PADDING = 12;
@@ -275,6 +280,54 @@ function getQueryResultFluentGridCommandConfiguration(): FluentResultGridCommand
                 placements: [placement.CellContextMenu],
                 groupId: "copyAs",
                 order: 260,
+            },
+            {
+                id: FluentResultGridCommand.GenerateSelect,
+                label: "",
+                placements: [placement.CellContextMenu],
+                groupId: "generate",
+                order: 270,
+                isVisible: (context) =>
+                    isFluentGenerateRowActionsVisible(
+                        [...(context.selection ?? [])],
+                        context.dataColumnCount ?? 0,
+                    ),
+            },
+            {
+                id: FluentResultGridCommand.GenerateUpdate,
+                label: "",
+                placements: [placement.CellContextMenu],
+                groupId: "generate",
+                order: 280,
+                isVisible: (context) =>
+                    isFluentGenerateRowActionsVisible(
+                        [...(context.selection ?? [])],
+                        context.dataColumnCount ?? 0,
+                    ),
+            },
+            {
+                id: FluentResultGridCommand.GenerateDelete,
+                label: "",
+                placements: [placement.CellContextMenu],
+                groupId: "generate",
+                order: 290,
+                isVisible: (context) =>
+                    isFluentGenerateRowActionsVisible(
+                        [...(context.selection ?? [])],
+                        context.dataColumnCount ?? 0,
+                    ),
+            },
+            {
+                id: FluentResultGridCommand.GenerateInsert,
+                label: "",
+                placements: [placement.CellContextMenu],
+                groupId: "generate",
+                order: 300,
+                isVisible: (context) =>
+                    isFluentGenerateInsertVisible(
+                        [...(context.selection ?? [])],
+                        context.dataColumnCount ?? 0,
+                    ),
             },
             {
                 id: FluentResultGridCommand.CopyColumnName,
@@ -683,13 +736,55 @@ const QueryResultFluentResultGrid = forwardRef<ResultGridHandle, ResultGridProps
     );
 
     const handleCommand = useCallback(
-        async (event: FluentResultGridCommandEvent) => {
+        async (
+            event: FluentResultGridCommandEvent,
+            rowAccessor?: { getItem(row: number): Slick.SlickData },
+        ) => {
             if (!context || !uri) {
                 return;
             }
 
             const selection = [...(event.selection ?? [])];
             switch (event.commandId) {
+                case FluentResultGridCommand.GenerateSelect:
+                case FluentResultGridCommand.GenerateUpdate:
+                case FluentResultGridCommand.GenerateDelete:
+                case FluentResultGridCommand.GenerateInsert: {
+                    if (!resultSetSummary || !rowAccessor) {
+                        break;
+                    }
+                    const action =
+                        event.commandId === FluentResultGridCommand.GenerateSelect
+                            ? "select"
+                            : event.commandId === FluentResultGridCommand.GenerateUpdate
+                              ? "update"
+                              : event.commandId === FluentResultGridCommand.GenerateDelete
+                                ? "delete"
+                                : "insert";
+                    await dispatchFluentGenerateCommand({
+                        action,
+                        ranges: selection,
+                        columnInfo: resultSetSummary.columnInfo,
+                        rowAccessor,
+                        resolveTableName: async () => {
+                            return await context.extensionRpc.sendRequest(
+                                qr.ResolveTableNameRequest.type,
+                                { uri, batchId: event.batchId },
+                            );
+                        },
+                        openGeneratedQuery: async (sql) => {
+                            await context.extensionRpc.sendRequest(
+                                qr.OpenGeneratedQueryRequest.type,
+                                {
+                                    uri,
+                                    sql,
+                                },
+                            );
+                        },
+                        warn: (message) => context.log.warn(message),
+                    });
+                    break;
+                }
                 case FluentResultGridCommand.CopySelection:
                     await context.extensionRpc.sendRequest(qr.CopySelectionRequest.type, {
                         uri,
@@ -811,7 +906,7 @@ const QueryResultFluentResultGrid = forwardRef<ResultGridHandle, ResultGridProps
                     break;
             }
         },
-        [context, props, uri],
+        [context, props, resultSetSummary, uri],
     );
 
     const handleThresholdExceeded = useCallback(async () => {

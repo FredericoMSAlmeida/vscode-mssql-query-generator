@@ -46,6 +46,7 @@ export interface FluentResultGridCommandContext
     canToggleMaximize?: boolean;
     isMaximized?: boolean;
     isColumnFrozen?: boolean;
+    dataColumnCount?: number;
 }
 
 export interface FluentResultGridCommandContribution {

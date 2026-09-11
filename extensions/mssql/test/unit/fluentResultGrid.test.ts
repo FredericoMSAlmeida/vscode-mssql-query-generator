@@ -27,7 +27,10 @@ import {
     restoreFluentResultGridColumnWidths,
     stabilizeFluentResultGridColumnInfo,
 } from "../../src/webviews/common/FluentResultGrid/internal/fluentResultGridState";
-import { isFluentResultGridHostCommand } from "../../src/webviews/common/FluentResultGrid/internal/fluentResultGridCommandUtils";
+import {
+    fluentResultGridCommandUsesActualCopySelection,
+    isFluentResultGridHostCommand,
+} from "../../src/webviews/common/FluentResultGrid/internal/fluentResultGridCommandUtils";
 import { shouldRevealFluentResultGridActiveCell } from "../../src/webviews/common/FluentResultGrid/internal/fluentResultGridKeyboardController";
 import {
     getFluentResultGridKeyboardAction,
@@ -1369,6 +1372,45 @@ suite("Fluent Result Grid", () => {
                 true,
             );
             expect(isFluentResultGridHostCommand("custom.export")).to.equal(true);
+        });
+
+        test("routes Copy and Generate commands through the actual (data-mapped) selection", () => {
+            expect(
+                fluentResultGridCommandUsesActualCopySelection(
+                    FluentResultGridCommand.CopySelection,
+                ),
+            ).to.equal(true);
+            expect(
+                fluentResultGridCommandUsesActualCopySelection(
+                    FluentResultGridCommand.CopyAsInClause,
+                ),
+            ).to.equal(true);
+            expect(
+                fluentResultGridCommandUsesActualCopySelection(
+                    FluentResultGridCommand.GenerateSelect,
+                ),
+            ).to.equal(true);
+            expect(
+                fluentResultGridCommandUsesActualCopySelection(
+                    FluentResultGridCommand.GenerateUpdate,
+                ),
+            ).to.equal(true);
+            expect(
+                fluentResultGridCommandUsesActualCopySelection(
+                    FluentResultGridCommand.GenerateDelete,
+                ),
+            ).to.equal(true);
+            expect(
+                fluentResultGridCommandUsesActualCopySelection(
+                    FluentResultGridCommand.GenerateInsert,
+                ),
+            ).to.equal(true);
+            expect(
+                fluentResultGridCommandUsesActualCopySelection(FluentResultGridCommand.SaveAsCsv),
+            ).to.equal(false);
+            expect(
+                fluentResultGridCommandUsesActualCopySelection(FluentResultGridCommand.ToggleSort),
+            ).to.equal(false);
         });
     });
 
