@@ -9,6 +9,7 @@ import { ContextMenu } from "../../../src/webviews/pages/QueryResult/table/plugi
 import {
     GridContextMenuAction,
     OpenGeneratedQueryRequest,
+    ResolveTableNameRequest,
     type ResultSetSummary,
 } from "../../../src/sharedInterfaces/queryResult";
 import type { QueryResultReactProvider } from "../../../src/webviews/pages/QueryResult/queryResultStateProvider";
@@ -117,7 +118,9 @@ suite("ContextMenu (legacy grid) generate-* actions", () => {
             menu as unknown as { handleMenuAction: (a: GridContextMenuAction) => Promise<void> }
         ).handleMenuAction(GridContextMenuAction.GenerateSelect);
 
-        expect(sendRequest.calledTwice).to.equal(true);
+        expect(
+            sendRequest.getCalls().some((c) => c.args[0] === ResolveTableNameRequest.type),
+        ).to.equal(false);
         const openCall = sendRequest
             .getCalls()
             .find((c) => c.args[0] === OpenGeneratedQueryRequest.type);
@@ -126,6 +129,45 @@ suite("ContextMenu (legacy grid) generate-* actions", () => {
         expect(params.uri).to.equal("file:///test.sql");
         expect(params.sql).to.equal(
             "SELECT [Id], [Name]\r\nFROM [dbo].[Customers]\r\nWHERE [Id] = 1;",
+        );
+    });
+
+    test("GenerateSelect resolves the table name via RPC when columnInfo is missing it", async () => {
+        const columnInfoMissingTableName = [
+            { dataTypeName: "int", baseColumnName: "Id" },
+            { dataTypeName: "nvarchar", baseColumnName: "Name" },
+        ] as ResultSetSummary["columnInfo"];
+        const { grid, queryResultContext, sendRequest } = makeGridAndContext([
+            makeRange(0, 0, 0, 0),
+        ]);
+        sendRequest
+            .withArgs(ResolveTableNameRequest.type, sinon.match.any)
+            .resolves({ tableName: "Fallback", schemaName: "dbo" });
+        const menu = new ContextMenu<Slick.SlickData>(
+            "file:///test.sql",
+            {
+                batchId: 0,
+                id: 0,
+                rowCount: 1,
+                columnInfo: columnInfoMissingTableName,
+            } as ResultSetSummary,
+            queryResultContext,
+        );
+        menu.init(grid as unknown as Slick.Grid<Slick.SlickData>);
+        await (
+            menu as unknown as { handleMenuAction: (a: GridContextMenuAction) => Promise<void> }
+        ).handleMenuAction(GridContextMenuAction.GenerateSelect);
+
+        expect(
+            sendRequest.getCalls().some((c) => c.args[0] === ResolveTableNameRequest.type),
+        ).to.equal(true);
+        const openCall = sendRequest
+            .getCalls()
+            .find((c) => c.args[0] === OpenGeneratedQueryRequest.type);
+        expect(openCall).to.not.equal(undefined);
+        const [, params] = openCall!.args;
+        expect(params.sql).to.equal(
+            "SELECT [Id], [Name]\r\nFROM [dbo].[Fallback]\r\nWHERE [Id] = 1;",
         );
     });
 

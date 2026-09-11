@@ -16,6 +16,7 @@ import {
     isFullRowSelected,
     isSingleColumnMultiRowSelection,
     isSingleRowSelection,
+    needsTableNameFallback,
     type FallbackTableName,
     type GeneratorColumn,
     type GeneratorDataProvider,
@@ -158,10 +159,13 @@ export async function dispatchFluentGenerateCommand({
     openGeneratedQuery,
     warn,
 }: DispatchFluentGenerateCommandOptions): Promise<void> {
-    const resolved = await resolveTableName();
-    const fallback = resolved.tableName
-        ? { tableName: resolved.tableName, schemaName: resolved.schemaName }
-        : undefined;
+    let fallback: FallbackTableName | undefined;
+    if (needsTableNameFallback(columnInfo)) {
+        const resolved = await resolveTableName();
+        fallback = resolved.tableName
+            ? { tableName: resolved.tableName, schemaName: resolved.schemaName }
+            : undefined;
+    }
 
     const sql = resolveFluentGeneratedSql(action, ranges, columnInfo, rowAccessor, fallback);
     if (!sql) {

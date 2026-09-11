@@ -240,6 +240,61 @@ suite("fluentGenerateQuery", () => {
             expect(warnings).to.deep.equal([]);
         });
 
+        test("skips resolveTableName when columnInfo already has the table name", async () => {
+            let resolveTableNameCalls = 0;
+            const openedSql: string[] = [];
+
+            await dispatchFluentGenerateCommand({
+                action: "select",
+                ranges: [{ fromRow: 0, toRow: 0, fromCell: 0, toCell: 0 }],
+                columnInfo,
+                rowAccessor: provider,
+                resolveTableName: async () => {
+                    resolveTableNameCalls++;
+                    return { tableName: undefined, schemaName: undefined };
+                },
+                openGeneratedQuery: async (sql) => {
+                    openedSql.push(sql);
+                },
+                warn: () => {},
+            });
+
+            expect(resolveTableNameCalls).to.equal(0);
+            expect(openedSql.length).to.equal(1);
+        });
+
+        test("calls resolveTableName when columnInfo is missing the table name", async () => {
+            let resolveTableNameCalls = 0;
+            const openedSql: string[] = [];
+
+            await dispatchFluentGenerateCommand({
+                action: "select",
+                ranges: [{ fromRow: 0, toRow: 0, fromCell: 0, toCell: 0 }],
+                columnInfo: [
+                    { columnName: "Id", baseColumnName: "Id", dataTypeName: "int" } as IDbColumn,
+                    {
+                        columnName: "Name",
+                        baseColumnName: "Name",
+                        dataTypeName: "nvarchar",
+                    } as IDbColumn,
+                ],
+                rowAccessor: provider,
+                resolveTableName: async () => {
+                    resolveTableNameCalls++;
+                    return { tableName: "Fallback", schemaName: "dbo" };
+                },
+                openGeneratedQuery: async (sql) => {
+                    openedSql.push(sql);
+                },
+                warn: () => {},
+            });
+
+            expect(resolveTableNameCalls).to.equal(1);
+            expect(openedSql).to.deep.equal([
+                "SELECT [Id], [Name]\r\nFROM [dbo].[Fallback]\r\nWHERE [Id] = 1;",
+            ]);
+        });
+
         test("warns instead of opening when no SQL can be generated", async () => {
             const openedSql: string[] = [];
             const warnings: string[] = [];

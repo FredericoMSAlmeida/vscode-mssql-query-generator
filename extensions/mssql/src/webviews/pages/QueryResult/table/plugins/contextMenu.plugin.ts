@@ -36,6 +36,7 @@ import {
     isFullRowSelected,
     isSingleColumnMultiRowSelection,
     isSingleRowSelection,
+    needsTableNameFallback,
 } from "../../../../common/sqlScriptGenerator";
 
 export class ContextMenu<T extends Slick.SlickData> {
@@ -223,13 +224,16 @@ export class ContextMenu<T extends Slick.SlickData> {
                     break;
                 }
 
-                const resolved = await this.queryResultContext.extensionRpc.sendRequest(
-                    ResolveTableNameRequest.type,
-                    { uri: this.uri, batchId: this.resultSetSummary.batchId },
-                );
-                const fallback = resolved.tableName
-                    ? { tableName: resolved.tableName, schemaName: resolved.schemaName }
-                    : undefined;
+                let fallback: { tableName: string; schemaName?: string } | undefined;
+                if (needsTableNameFallback(columnInfo)) {
+                    const resolved = await this.queryResultContext.extensionRpc.sendRequest(
+                        ResolveTableNameRequest.type,
+                        { uri: this.uri, batchId: this.resultSetSummary.batchId },
+                    );
+                    fallback = resolved.tableName
+                        ? { tableName: resolved.tableName, schemaName: resolved.schemaName }
+                        : undefined;
+                }
 
                 let sql: string | undefined;
                 if (isSingleRow) {

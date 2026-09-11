@@ -896,6 +896,65 @@ suite("Query Runner tests", () => {
         );
     });
 
+    suite("getBatchQueryText", () => {
+        function makeBatchSummary(overrides: Record<string, unknown> = {}) {
+            return {
+                executionElapsed: null,
+                executionEnd: null,
+                executionStart: new Date().toISOString(),
+                hasError: false,
+                id: 0,
+                selection: { startLine: 0, startColumn: 0, endLine: 0, endColumn: 20 },
+                resultSetSummaries: [],
+                ...overrides,
+            };
+        }
+
+        test("returns the executed-query snapshot when there is only one batch", async () => {
+            const queryRunner = createQueryRunner();
+            queryRunner["_uriToQueryStringMap"].set(standardUri, "SELECT * FROM dbo.Orders");
+            queryRunner.batchSets[0] = makeBatchSummary();
+
+            const text = await queryRunner.getBatchQueryText(0);
+
+            expect(text).to.equal("SELECT * FROM dbo.Orders");
+            expect(vscodeWorkspace.openTextDocument).to.not.have.been.called;
+        });
+
+        test("reads the live document sliced by batch selection when there are multiple batches", async () => {
+            const queryRunner = createQueryRunner();
+            queryRunner["_uriToQueryStringMap"].set(
+                standardUri,
+                "SELECT * FROM dbo.Orders;\r\nSELECT * FROM dbo.Customers;",
+            );
+            queryRunner.batchSets[0] = makeBatchSummary({
+                id: 0,
+                selection: { startLine: 0, startColumn: 0, endLine: 0, endColumn: 26 },
+            });
+            queryRunner.batchSets[1] = makeBatchSummary({
+                id: 1,
+                selection: { startLine: 1, startColumn: 0, endLine: 1, endColumn: 28 },
+            });
+            const testDoc = {
+                getText: (range: vscode.Range) =>
+                    range.start.line === 0
+                        ? "SELECT * FROM dbo.Orders;"
+                        : "SELECT * FROM dbo.Customers;",
+            } as unknown as vscode.TextDocument;
+            vscodeWorkspace.openTextDocument.resolves(testDoc);
+
+            const text = await queryRunner.getBatchQueryText(1);
+
+            expect(text).to.equal("SELECT * FROM dbo.Customers;");
+            expect(vscodeWorkspace.openTextDocument).to.have.been.calledOnce;
+        });
+
+        test("returns undefined when the batch does not exist", async () => {
+            const queryRunner = createQueryRunner();
+            expect(await queryRunner.getBatchQueryText(0)).to.equal(undefined);
+        });
+    });
+
     suite("Copy Results", () => {
         setup(() => {
             // Stub vscode.window.withProgress to execute the task immediately

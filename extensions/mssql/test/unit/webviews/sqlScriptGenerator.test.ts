@@ -19,6 +19,7 @@ import {
     isFullRowSelected,
     isSingleColumnMultiRowSelection,
     isSingleRowSelection,
+    needsTableNameFallback,
     type GeneratorColumn,
     type GeneratorDataProvider,
 } from "../../../src/webviews/common/sqlScriptGenerator";
@@ -109,6 +110,30 @@ suite("sqlScriptGenerator", () => {
                     schemaName: "wrong",
                 }),
             ).to.equal("[dbo].[RealTable]");
+        });
+    });
+
+    suite("needsTableNameFallback", () => {
+        test("false when every column already has a base table name", () => {
+            expect(
+                needsTableNameFallback([
+                    makeDbCol("int", "Id", "Customers", "dbo"),
+                    makeDbCol("nvarchar", "Name", "Customers", "dbo"),
+                ]),
+            ).to.equal(false);
+        });
+
+        test("true when any column is missing a base table name", () => {
+            expect(
+                needsTableNameFallback([
+                    makeDbCol("int", "Id", "Customers", "dbo"),
+                    makeDbCol("nvarchar", "Total"),
+                ]),
+            ).to.equal(true);
+        });
+
+        test("true for an empty column list", () => {
+            expect(needsTableNameFallback([])).to.equal(true);
         });
     });
 

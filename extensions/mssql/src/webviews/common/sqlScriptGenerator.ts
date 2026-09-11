@@ -165,6 +165,10 @@ export function buildQualifiedTableName(
     return schemaName ? `${escapeSqlIdentifier(schemaName)}.${table}` : table;
 }
 
+export function needsTableNameFallback(columnInfo: IDbColumn[]): boolean {
+    return columnInfo.length === 0 || columnInfo.some((col) => !col.baseTableName);
+}
+
 export function buildWhereClause(pairs: ColumnValuePair[]): string {
     return pairs
         .map((pair) => {
